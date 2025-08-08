@@ -1,6 +1,6 @@
 # CollabCanvas - Real-Time Collaborative Whiteboard
 
-![CollabCanvas Landing Page](./client/src/assets/images/Screenshot 2025-08-09 010911.png)
+![CollabCanvas Landing Page](./client/src/assets/images/collabcanvas-landingpage.png)
 
 A full-stack, real-time collaborative whiteboard application built with the MERN stack and WebSockets. This project allows multiple users to create shared rooms, draw together instantly, and save their work.
 
