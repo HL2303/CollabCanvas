@@ -1,0 +1,30 @@
+services:
+  # --- Backend Service ---
+  server:
+    build: ./server
+    # This line tells Docker Compose to load variables directly from this file
+    env_file:
+      - ./server/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+
+  # --- Frontend Service ---
+  client:
+    build: ./client
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+  # --- Database Service ---
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:
