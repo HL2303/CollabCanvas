@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import { useNavigate, Link } from 'react-router-dom';
-import DashboardCard from '../components/Card';
+import DashboardCard from '../components/DashboardCard';
 import { Clock, PlusCircle, LogIn , LayoutGrid } from 'lucide-react';
 
 

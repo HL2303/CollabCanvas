@@ -1,23 +1,17 @@
-# Stage 1: Use an official Node.js runtime
 FROM node:18-alpine
 
-# Set the working directory
 WORKDIR /usr/src/app
 
-# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# --- EXPLICITLY COPY SOURCE CODE ---
-# This is a more robust way to ensure all necessary files are included.
-COPY index.js ./
-COPY config ./config
-COPY middleware ./middleware
-COPY models ./models
-COPY routes ./routes
+COPY . .
 
-# Expose the port the app runs on
+# --- DEBUGGING STEP ---
+# This command will list all files and folders in the current directory (/usr/src/app)
+# so we can see what is actually being copied into the container.
+RUN ls -la
+
 EXPOSE 3000
 
-# Define the command to run your app
 CMD [ "node", "index.js" ]

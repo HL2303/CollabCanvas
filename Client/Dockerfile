@@ -1,5 +1,6 @@
 # --- Stage 1: Build the React application ---
-FROM node:18-alpine AS builder
+# Use a newer version of Node.js that is compatible with your packages
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -24,5 +25,3 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80 for Nginx
 EXPOSE 80
-
-# The default Nginx command will run, so we don't need a CMD instruction.

@@ -9,7 +9,9 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const connectDB = require('./config/db');
 const User = require('./models/users');
+const CanvasState = require('./models/CanvasState');
 
+// Connect to Database
 connectDB();
 
 const app = express();
@@ -20,17 +22,15 @@ const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// This map now stores a complete state object for each room
 const rooms = new Map();
 
-// --- Helper function to broadcast messages to a specific room ---
-function broadcastToRoom(roomId, message, senderWs) {
+function broadcastToRoom(roomId, message) {
   const room = rooms.get(roomId);
-  if (room) {
-    room.forEach((user) => {
-      // Send to everyone in the room including the sender,
-      // as the frontend will now rely on this broadcast to draw.
-      if (user.ws.readyState === WebSocket.OPEN) {
-        user.ws.send(message);
+  if (room && room.clients) {
+    room.clients.forEach((client) => {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(message);
       }
     });
   }
@@ -38,11 +38,9 @@ function broadcastToRoom(roomId, message, senderWs) {
 
 function broadcastOnlineUsers(roomId) {
   const room = rooms.get(roomId);
-  if (!room) return;
-  const onlineUsers = Array.from(room.values()).map(user => ({
-    id: user.id,
-    username: user.username,
-  }));
+  if (!room || !room.clients) return;
+
+  const onlineUsers = Array.from(room.clients).map(c => ({ id: c.userId, username: c.username }));
   const message = JSON.stringify({ type: 'online-users', users: onlineUsers });
   broadcastToRoom(roomId, message);
 }
@@ -52,51 +50,74 @@ wss.on('connection', async (ws, req) => {
   const token = query.token;
   const roomId = query.roomId;
 
-  if (!token || !roomId) {
-    return ws.terminate();
-  }
+  if (!token || !roomId) return ws.terminate();
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userRecord = await User.findById(decoded.user.id).select('-password');
-    if (!userRecord) { return ws.terminate(); }
+    if (!userRecord) return ws.terminate();
 
+    // If the room doesn't exist in memory, create it and load its history from DB
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, new Map());
+      const savedState = await CanvasState.findOne({ roomId });
+      rooms.set(roomId, {
+        clients: new Set(),
+        drawingHistory: savedState ? savedState.drawingHistory : [],
+      });
     }
 
     const room = rooms.get(roomId);
-    const userInfo = {
-      id: userRecord._id.toString(),
+    const clientInfo = {
+      userId: userRecord._id.toString(),
       username: userRecord.username,
       ws: ws,
     };
     
-    room.set(userInfo.id, userInfo);
-    console.log(`${userInfo.username} connected to room ${roomId}`);
+    room.clients.add(clientInfo);
+    console.log(`${clientInfo.username} connected to room ${roomId}`);
+
+    // Immediately send the full, up-to-date history to the new user
+    ws.send(JSON.stringify({
+      type: 'initial-state',
+      payload: room.drawingHistory,
+    }));
 
     broadcastOnlineUsers(roomId);
 
     ws.on('message', (message) => {
-      // The server now simply acts as a broadcaster.
-      // It trusts that the client is sending all the necessary drawing info (color, size, etc.).
-      broadcastToRoom(roomId, message, ws);
+      const messageString = message.toString();
+      const data = JSON.parse(messageString);
+
+      // If it's a draw or clear event, update the server's in-memory history
+      if (data.type === 'draw') {
+        room.drawingHistory.push(data);
+      } else if (data.type === 'clear') {
+        room.drawingHistory = [];
+      }
+      
+      // Broadcast the message to everyone in the room
+      broadcastToRoom(roomId, messageString);
     });
 
     ws.on('close', () => {
-      const room = rooms.get(roomId);
-      if (room) {
-        room.delete(userInfo.id);
-        if (room.size === 0) {
+      if (rooms.has(roomId)) {
+        const room = rooms.get(roomId);
+        room.clients.delete(clientInfo);
+        if (room.clients.size === 0) {
+          // Optional: Save final state to DB when room is empty
+          // const finalState = new CanvasState({ roomId, drawingHistory: room.drawingHistory });
+          // await CanvasState.findOneAndUpdate({ roomId }, finalState, { upsert: true });
           rooms.delete(roomId);
+          console.log(`Room ${roomId} is empty and has been closed.`);
+        } else {
+          broadcastOnlineUsers(roomId);
         }
       }
-      console.log(`${userInfo.username} disconnected from room ${roomId}`);
-      broadcastOnlineUsers(roomId);
+      console.log(`${clientInfo.username} disconnected from room ${roomId}`);
     });
 
   } catch (err) {
-    console.log('Connection rejected: Invalid token or user.');
+    console.log('Connection rejected:', err.message);
     return ws.terminate();
   }
 });

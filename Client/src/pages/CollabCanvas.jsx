@@ -1,4 +1,3 @@
-// src/pages/CollabCanvas.jsx
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Canvas from '../components/Canvas';
@@ -34,40 +33,31 @@ const CollabCanvas = () => {
   useEffect(() => {
     if (!token || !roomId) return;
 
-    const loadCanvas = async () => {
-      try {
-        const response = await fetch(`http://localhost:3000/api/canvas/load/${roomId}`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setDrawingHistory(data.drawingHistory || []);
-          setRoomName(data.name);
-          localStorage.setItem('recentRoom', JSON.stringify({ name: data.name, roomId: data.roomId }));
-        } else {
-          setError('Room not found or you do not have access.');
-        }
-      } catch (err) {
-        setError('Error loading canvas.');
-      }
-    };
-    loadCanvas();
-
+    // We no longer load from the API here. The server will send us the state.
     const socket = new WebSocket(`ws://localhost:3000?token=${token}&roomId=${roomId}`);
     socketRef.current = socket;
 
     socket.onopen = () => console.log(`WebSocket connection established for room ${roomId}`);
     socket.onclose = () => console.log('WebSocket connection closed');
 
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'online-users') {
-            setOnlineUsers(data.users);
-        } else if (data.type === 'draw') {
-            setDrawingHistory((prev) => [...prev, data]);
-        } else if (data.type === 'clear') {
-            clearCanvas();
-        }
+    socket.onmessage = async (event) => {
+      let data;
+       if (event.data instanceof Blob) {
+        const textData = await event.data.text();
+        data = JSON.parse(textData);
+      } else {
+        data = JSON.parse(event.data);
+      }
+
+      if (data.type === 'initial-state') {
+        setDrawingHistory(data.payload); // Load the full history from the server
+      } else if (data.type === 'online-users') {
+        setOnlineUsers(data.users);
+      } else if (data.type === 'draw') {
+        setDrawingHistory((prev) => [...prev, data]);
+      } else if (data.type === 'clear') {
+        clearCanvas();
+      }
     };
 
     return () => socket.close();
@@ -94,8 +84,7 @@ const CollabCanvas = () => {
   };
 
   const handleInvite = () => {
-    const inviteLink = window.location.href;
-    navigator.clipboard.writeText(inviteLink);
+    navigator.clipboard.writeText(window.location.href);
     setInviteButtonText('Copied!');
     setTimeout(() => setInviteButtonText('Invite'), 2000);
   };
@@ -153,3 +142,4 @@ const CollabCanvas = () => {
 };
 
 export default CollabCanvas;
+
